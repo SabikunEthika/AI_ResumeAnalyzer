@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel, field_validator
 
 from services.resume_parser import extract_resume_text
@@ -24,6 +24,24 @@ class JobDescription(BaseModel):
 
         return value
 
+class AIAnalysisResponse(BaseModel):
+    overall_assessment: str
+    strengths: list[str]
+    weaknesses: list[str]
+    suggestions: list[str]
+
+class ResumeUploadResponse(BaseModel):
+    analysis_id: str
+    filename: str
+    skills: list[str]
+
+class JobMatchResponse(BaseModel):
+    analysis_id: str
+    required_skills: list[str]
+    matched_skills: list[str]
+    missing_skills: list[str]
+    match_score: int
+    ai_analysis: AIAnalysisResponse
 
 analyses = {}
 
@@ -35,7 +53,7 @@ def home():
     }
 
 
-@app.post("/resume/upload")
+@app.post("/resume/upload", response_model=ResumeUploadResponse)
 async def upload_resume(file: UploadFile = File(...)):
     file_bytes = await file.read()
 
@@ -57,19 +75,21 @@ async def upload_resume(file: UploadFile = File(...)):
         }
 
     except ValueError as error:
-        return {
-            "error": str(error)
-        }
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
 
 
-@app.post("/job/match")
+@app.post("/job/match", response_model=JobMatchResponse)
 async def match_job(job: JobDescription):
     analysis = analyses.get(job.analysis_id)
 
     if not analysis:
-        return {
-            "error": "Invalid analysis ID. Please upload a resume first."
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid analysis ID. Please upload a resume first."
+        )
 
     required_skills = extract_skills(job.text)
 
@@ -88,9 +108,10 @@ async def match_job(job: JobDescription):
         )
 
     except Exception:
-        return {
-            "error": "AI analysis failed. Please try again later."
-        }
+        raise HTTPException(
+            status_code=503,
+            detail="AI analysis failed. Please try again later."
+        )
 
     return {
         "analysis_id": job.analysis_id,
