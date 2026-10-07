@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from services.resume_parser import extract_resume_text
 from services.skill_analyzer import extract_skills
@@ -11,6 +11,14 @@ app = FastAPI()
 
 class JobDescription(BaseModel):
     text: str
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value):
+        if not value.strip():
+            raise ValueError("Job description cannot be empty.")
+
+        return value
 
 resume_data = {
     "text": "",
@@ -45,7 +53,7 @@ async def upload_resume(file: UploadFile = File(...)):
         }
 @app.post("/job/match")
 async def match_job(job: JobDescription):
-    if not resume_data["skills"]:
+    if not resume_data["text"]:
         return {
             "error": "Please upload a resume before matching a job."
         }
@@ -57,13 +65,19 @@ async def match_job(job: JobDescription):
         required_skills
     )
 
-    ai_analysis = analyze_resume(
-        resume_data["text"],
-        job.text,
-        result["matched_skills"],
-        result["missing_skills"],
-        result["match_score"]
-    )
+    try:
+        ai_analysis = analyze_resume(
+            resume_data["text"],
+            job.text,
+            result["matched_skills"],
+            result["missing_skills"],
+            result["match_score"]
+        )
+
+    except Exception:
+        return {
+            "error": "AI analysis failed. Please try again later."
+        }
 
     return {
         "required_skills": required_skills,
