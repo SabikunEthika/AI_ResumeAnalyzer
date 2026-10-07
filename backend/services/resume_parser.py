@@ -15,7 +15,7 @@ def extract_text_from_pdf(file_bytes):
         if page_text:
             text += page_text + "\n"
 
-    return text
+    return text.strip()
 
 
 def extract_text_from_docx(file_bytes):
@@ -26,16 +26,28 @@ def extract_text_from_docx(file_bytes):
     for paragraph in document.paragraphs:
         text += paragraph.text + "\n"
 
-    return text
+    return text.strip()
 
 
 def extract_resume_text(filename, file_bytes):
+    if not filename:
+        raise ValueError("No file was provided.")
+
+    if not file_bytes:
+        raise ValueError("The uploaded file is empty.")
+
     filename = filename.lower()
 
     if filename.endswith(".pdf"):
-        return extract_text_from_pdf(file_bytes)
+        text = extract_text_from_pdf(file_bytes)
 
-    if filename.endswith(".docx"):
-        return extract_text_from_docx(file_bytes)
+    elif filename.endswith(".docx"):
+        text = extract_text_from_docx(file_bytes)
 
-    raise ValueError("Only PDF and DOCX files are supported.")
+    else:
+        raise ValueError("Only PDF and DOCX files are supported.")
+
+    if not text:
+        raise ValueError("Could not extract any text from the resume.")
+
+    return text
