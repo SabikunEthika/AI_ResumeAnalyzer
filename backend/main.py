@@ -5,8 +5,7 @@ from pydantic import BaseModel, field_validator
 
 from services.resume_parser import extract_resume_text
 from services.skill_analyzer import extract_skills
-from services.job_matcher import calculate_match
-from services.ai_analyzer import analyze_resume
+from services.analysis_service import analyze_job_match
 
 
 app = FastAPI()
@@ -91,20 +90,17 @@ async def match_job(job: JobDescription):
             detail="Invalid analysis ID. Please upload a resume first."
         )
 
-    required_skills = extract_skills(job.text)
-
-    result = calculate_match(
-        analysis["skills"],
-        required_skills
-    )
-
     try:
-        ai_analysis = analyze_resume(
+        result = analyze_job_match(
             analysis["text"],
-            job.text,
-            result["matched_skills"],
-            result["missing_skills"],
-            result["match_score"]
+            analysis["skills"],
+            job.text
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
         )
 
     except Exception:
@@ -115,7 +111,5 @@ async def match_job(job: JobDescription):
 
     return {
         "analysis_id": job.analysis_id,
-        "required_skills": required_skills,
-        **result,
-        "ai_analysis": ai_analysis
+        **result
     }
