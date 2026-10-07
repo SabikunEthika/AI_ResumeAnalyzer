@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from services.resume_parser import extract_resume_text
 from services.skill_analyzer import extract_skills
 from services.job_matcher import calculate_match
+from services.ai_analyzer import analyze_resume
 
 
 app = FastAPI()
@@ -56,8 +57,17 @@ async def match_job(job: JobDescription):
         required_skills
     )
 
+    ai_analysis = analyze_resume(
+        resume_data["text"],
+        job.text,
+        result["matched_skills"],
+        result["missing_skills"],
+        result["match_score"]
+    )
+
     return {
         "required_skills": required_skills,
-        **result
+        **result,
+        "ai_analysis": ai_analysis
     }
   
