@@ -1,16 +1,26 @@
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 
 DATABASE_PATH = Path(__file__).resolve().parent / "analyses.db"
 
 
+@contextmanager
 def get_connection():
-    connection = sqlite3.connect(DATABASE_PATH)
+    connection = sqlite3.connect(DATABASE_PATH, timeout=10)
     connection.row_factory = sqlite3.Row
-    return connection
+
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def init_db():
@@ -20,6 +30,15 @@ def init_db():
                 analysis_id TEXT PRIMARY KEY,
                 resume_text TEXT NOT NULL,
                 skills TEXT NOT NULL
+            )
+        """)
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS job_match_results (
+                analysis_id TEXT PRIMARY KEY,
+                job_description TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -71,23 +90,12 @@ def delete_analysis(analysis_id):
         )
 
         return cursor.rowcount > 0
-    
+
 
 def save_match_result(analysis_id, job_description, result):
     result_json = json.dumps(result)
 
     with get_connection() as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_match_results (
-                analysis_id TEXT PRIMARY KEY,
-                job_description TEXT NOT NULL,
-                result_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-
         connection.execute(
             """
             INSERT INTO job_match_results (
