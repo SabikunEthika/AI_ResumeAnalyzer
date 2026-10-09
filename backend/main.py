@@ -79,6 +79,38 @@ async def upload_resume(file: UploadFile = File(...)):
             detail=str(error)
         )
 
+class AnalysisResponse(BaseModel):
+    analysis_id: str
+    skills: list[str]
+
+@app.get("/analysis/{analysis_id}", response_model=AnalysisResponse)
+def get_analysis(analysis_id: str):
+    analysis = analyses.get(analysis_id)
+
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="Analysis not found."
+        )
+
+    return {
+        "analysis_id": analysis_id,
+        "skills": analysis["skills"]
+    }
+
+@app.delete("/analysis/{analysis_id}")
+def delete_analysis(analysis_id: str):
+    if analysis_id not in analyses:
+        raise HTTPException(
+            status_code=404,
+            detail="Analysis not found."
+        )
+
+    del analyses[analysis_id]
+
+    return {
+        "message": "Analysis deleted successfully."
+    }
 
 @app.post("/job/match", response_model=JobMatchResponse)
 async def match_job(job: JobDescription):
