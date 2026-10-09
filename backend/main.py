@@ -6,9 +6,15 @@ from pydantic import BaseModel, field_validator
 from services.resume_parser import extract_resume_text
 from services.skill_analyzer import extract_skills
 from services.analysis_service import analyze_job_match
-
+from database import (
+    init_db,
+    save_analysis,
+    get_analysis,
+    delete_analysis
+)
 
 app = FastAPI()
+init_db()
 
 
 class JobDescription(BaseModel):
@@ -42,14 +48,13 @@ class JobMatchResponse(BaseModel):
     match_score: int
     ai_analysis: AIAnalysisResponse
 
-analyses = {}
-
 
 @app.get("/")
 def home():
     return {
         "message": "AI Resume Analyzer Backend is running!"
     }
+
 
 
 @app.post("/resume/upload", response_model=ResumeUploadResponse)
@@ -62,10 +67,11 @@ async def upload_resume(file: UploadFile = File(...)):
 
         analysis_id = str(uuid.uuid4())
 
-        analyses[analysis_id] = {
-            "text": text,
-            "skills": skills
-        }
+        save_analysis(
+            analysis_id,
+            text,
+            skills
+        )
 
         return {
             "analysis_id": analysis_id,
@@ -83,9 +89,10 @@ class AnalysisResponse(BaseModel):
     analysis_id: str
     skills: list[str]
 
+
 @app.get("/analysis/{analysis_id}", response_model=AnalysisResponse)
-def get_analysis(analysis_id: str):
-    analysis = analyses.get(analysis_id)
+def get_analysis_endpoint(analysis_id: str):
+    analysis = get_analysis(analysis_id)
 
     if not analysis:
         raise HTTPException(
@@ -98,15 +105,16 @@ def get_analysis(analysis_id: str):
         "skills": analysis["skills"]
     }
 
+
 @app.delete("/analysis/{analysis_id}")
-def delete_analysis(analysis_id: str):
-    if analysis_id not in analyses:
+def delete_analysis_endpoint(analysis_id: str):
+    deleted = delete_analysis(analysis_id)
+
+    if not deleted:
         raise HTTPException(
             status_code=404,
             detail="Analysis not found."
         )
-
-    del analyses[analysis_id]
 
     return {
         "message": "Analysis deleted successfully."
@@ -114,7 +122,7 @@ def delete_analysis(analysis_id: str):
 
 @app.post("/job/match", response_model=JobMatchResponse)
 async def match_job(job: JobDescription):
-    analysis = analyses.get(job.analysis_id)
+    analysis = get_analysis(job.analysis_id)
 
     if not analysis:
         raise HTTPException(
