@@ -10,7 +10,9 @@ from database import (
     init_db,
     save_analysis,
     get_analysis,
-    delete_analysis
+    delete_analysis,
+    save_match_result,
+    get_match_result
 )
 
 app = FastAPI()
@@ -171,7 +173,42 @@ async def match_job(job: JobDescription):
             detail="AI analysis failed. Please try again later."
         )
 
+    result["ai_analysis"] = result["ai_analysis"].model_dump()
+
+    save_match_result(
+        job.analysis_id,
+        job.text,
+        result
+    )
+
     return {
         "analysis_id": job.analysis_id,
         **result
     }
+
+class SavedMatchResponse(JobMatchResponse):
+    job_description: str
+    created_at: str
+
+@app.get(
+    "/analysis/{analysis_id}/match-result",
+    response_model=SavedMatchResponse
+)
+def get_saved_match_result(analysis_id: str):
+    analysis = get_analysis(analysis_id)
+
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="Analysis not found."
+        )
+
+    result = get_match_result(analysis_id)
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="No saved job-match result found."
+        )
+
+    return result
