@@ -1,8 +1,10 @@
+
 import os
+from typing import Literal
 
 from dotenv import load_dotenv
 from google import genai
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from google.genai import types
 
 
@@ -16,45 +18,117 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 
+class RequirementAssessment(BaseModel):
+    title: str = Field(description="A specific job requirement")
+    importance: Literal["required", "preferred"] = Field(
+        description="Whether the requirement is essential or preferred"
+    )
+    status: Literal["supported", "partial", "not_found"] = Field(
+        description="How strongly the resume supports this requirement"
+    )
+    evidence: str = Field(
+        description="Relevant evidence from the resume, or a clear statement that none was found"
+    )
+    explanation: str = Field(
+        description="Why the evidence does or does not satisfy the requirement"
+    )
+
+
 class AIAnalysis(BaseModel):
     overall_assessment: str
     strengths: list[str]
     weaknesses: list[str]
     suggestions: list[str]
+    requirement_assessments: list[RequirementAssessment]
 
 
-def analyze_resume(resume_text, job_description, matched_skills, missing_skills, match_score):
+def analyze_resume(
+    resume_text,
+    job_description,
+    matched_skills,
+    missing_skills,
+    match_score
+):
     prompt = f"""
-You are an AI resume analyzer.
+You are an evidence-based resume evaluator and career advisor.
+Evaluate candidates across ALL job families and academic disciplines.
 
-Analyze the candidate's resume against the target job description.
-
-Candidate Resume:
-{resume_text}
-
-Target Job Description:
+JOB DESCRIPTION:
 {job_description}
 
-Matched Skills:
-{matched_skills}
+RESUME:
+{resume_text}
 
-Missing Skills:
-{missing_skills}
+OPTIONAL KEYWORD-BASED INFORMATION:
+Matched keywords: {matched_skills}
+Missing keywords: {missing_skills}
+Keyword overlap score: {match_score}%
 
-Current Skill Match Score:
-{match_score}%
+IMPORTANT:
+The keyword information above comes from a limited vocabulary.
+It may be incomplete or misleading. Do not treat it as ground truth.
+Analyze the resume and job description independently.
 
-Provide a practical and honest analysis.
+1. UNDERSTAND THE JOB
+Infer the likely role, responsibilities, seniority, and objectives
+from the description. If the role is unclear, acknowledge uncertainty.
 
-The overall assessment should briefly explain how suitable the candidate is for the job.
+2. IDENTIFY REQUIREMENTS DYNAMICALLY
+Create a concise list of meaningful job-specific requirements.
+Include explicit requirements and important responsibilities implied
+by the description. Cover relevant skills, experience, qualifications,
+tools, communication, domain knowledge, or other job-specific needs.
 
-Strengths should focus on skills, experience, education, projects, or other relevant qualifications found in the resume.
+Do not assume every job needs technical skills.
+Do not invent requirements that are not reasonably supported by
+the description.
+Mark a requirement "required" only when it is explicitly essential
+or strongly implied. Otherwise, mark it "preferred".
+Combine duplicate or substantially overlapping requirements.
+If the description contains too little information to identify
+meaningful requirements, return an empty list rather than inventing them.
 
-Weaknesses should identify important gaps or areas where the resume is weaker compared with the job description.
+3. EVALUATE RESUME EVIDENCE
+For each requirement, assign exactly one status:
 
-Suggestions should provide specific and actionable ways the candidate can improve their resume or qualifications for this job.
+- supported: clear resume evidence demonstrates the requirement.
+- partial: some relevant evidence exists, but coverage or proficiency
+  is uncertain or incomplete.
+- not_found: the supplied resume does not provide sufficient evidence.
 
-Do not invent experience, skills, education, or achievements that are not present in the resume.
+Not_found does NOT mean the candidate lacks the ability.
+Do not infer proficiency from a skill name alone when the context
+does not support it.
+
+Look for evidence in projects, employment, education, volunteering,
+certifications, achievements, portfolios, and completed tasks.
+Recognize equivalent terminology, transferable experience, and
+relevant accomplishments from other fields.
+
+For each requirement, provide concise, specific evidence from the
+resume. Never fabricate quotations, accomplishments, qualifications,
+or experience. If evidence is absent, say so clearly.
+Do not claim to have verified anything outside the supplied text.
+
+4. OVERALL ASSESSMENT
+Explain the candidate's fit using concrete evidence, relevant gaps,
+transferable abilities, and uncertainty. Do not rely on the keyword score.
+Do not present an uncertain inference as a confirmed fact.
+
+5. STRENGTHS
+List specific, evidence-supported strengths and explain their relevance.
+
+6. WEAKNESSES
+Prioritize important gaps or missing evidence. Distinguish between
+a demonstrated qualification gap and information the resume omits.
+
+7. ACTIONABLE SUGGESTIONS
+Recommend realistic, role-relevant improvements. Suggest projects,
+training, certifications, or portfolio work only when appropriate.
+Never advise the candidate to claim skills or experience they do not have.
+
+Keep the analysis balanced, practical, specific, and non-repetitive.
+Use the language and professional context appropriate to the role.
 """
 
     response = client.models.generate_content(
@@ -65,5 +139,8 @@ Do not invent experience, skills, education, or achievements that are not presen
             response_schema=AIAnalysis
         )
     )
+
+    if not response.text:
+        raise ValueError("The AI returned an empty analysis.")
 
     return AIAnalysis.model_validate_json(response.text)
