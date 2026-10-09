@@ -56,34 +56,56 @@ def home():
     }
 
 
+MAX_FILE_SIZE = 5 * 1024 * 1024
+
 
 @app.post("/resume/upload", response_model=ResumeUploadResponse)
 async def upload_resume(file: UploadFile = File(...)):
-    file_bytes = await file.read()
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No file was provided."
+        )
+
+    filename = file.filename.lower()
+
+    if not filename.endswith((".pdf", ".docx")):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF and DOCX files are supported."
+        )
+
+    file_bytes = await file.read(MAX_FILE_SIZE + 1)
+
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="File is too large. Maximum allowed size is 5 MB."
+        )
 
     try:
         text = extract_resume_text(file.filename, file_bytes)
-        skills = extract_skills(text)
-
-        analysis_id = str(uuid.uuid4())
-
-        save_analysis(
-            analysis_id,
-            text,
-            skills
-        )
-
-        return {
-            "analysis_id": analysis_id,
-            "filename": file.filename,
-            "skills": skills
-        }
-
     except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error)
         )
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to read the file. Please upload a valid PDF or DOCX."
+        )
+
+    skills = extract_skills(text)
+    analysis_id = str(uuid.uuid4())
+
+    save_analysis(analysis_id, text, skills)
+
+    return {
+        "analysis_id": analysis_id,
+        "filename": file.filename,
+        "skills": skills
+    }
 
 class AnalysisResponse(BaseModel):
     analysis_id: str
