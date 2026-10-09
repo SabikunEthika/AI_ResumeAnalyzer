@@ -1,15 +1,14 @@
+
 from services.skill_analyzer import extract_skills
 from services.job_matcher import calculate_match
 from services.ai_analyzer import analyze_resume
+from services.job_description_validator import validate_job_description
 
 
 def analyze_job_match(resume_text, resume_skills, job_description):
-    required_skills = extract_skills(job_description)
+    job_description = validate_job_description(job_description)
 
-    if not required_skills:
-        raise ValueError(
-            "The provided text does not appear to be a valid job description."
-        )
+    required_skills = extract_skills(job_description)
 
     result = calculate_match(
         resume_skills,
