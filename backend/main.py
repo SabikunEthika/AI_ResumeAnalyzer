@@ -2,10 +2,14 @@ import uuid
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel, field_validator
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Literal
 
 from services.resume_parser import extract_resume_text
 from services.skill_analyzer import extract_skills
 from services.analysis_service import analyze_job_match
+from services.resume_validator import validate_resume_document
+from services.resume_quality_analyzer import analyze_resume_quality
 from database import (
     init_db,
     save_analysis,
@@ -17,7 +21,16 @@ from database import (
 
 app = FastAPI()
 init_db()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class JobDescription(BaseModel):
     analysis_id: str
@@ -31,11 +44,20 @@ class JobDescription(BaseModel):
 
         return value
 
+class RequirementAssessmentResponse(BaseModel):
+    title: str
+    importance: Literal["required", "preferred"]
+    status: Literal["supported", "partial", "not_found"]
+    evidence: str
+    explanation: str
+
+
 class AIAnalysisResponse(BaseModel):
     overall_assessment: str
     strengths: list[str]
     weaknesses: list[str]
     suggestions: list[str]
+    requirement_assessments: list[RequirementAssessmentResponse]
 
 class ResumeUploadResponse(BaseModel):
     analysis_id: str
@@ -47,8 +69,11 @@ class JobMatchResponse(BaseModel):
     required_skills: list[str]
     matched_skills: list[str]
     missing_skills: list[str]
-    match_score: int
+    match_score: int | None
     ai_analysis: AIAnalysisResponse
+    
+class ResumeQualityRequest(BaseModel):
+    analysis_id: str
 
 
 @app.get("/")
@@ -96,6 +121,24 @@ async def upload_resume(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=400,
             detail="Unable to read the file. Please upload a valid PDF or DOCX."
+        )
+
+
+    try:
+        validation = validate_resume_document(text)
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to verify this document right now. Please try again."
+        )
+
+    if not validation.is_resume:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This file does not appear to be a resume or CV. "
+                + validation.reason
+            )
         )
 
     skills = extract_skills(text)
@@ -212,3 +255,26 @@ def get_saved_match_result(analysis_id: str):
         )
 
     return result
+
+
+@app.post("/resume/quality")
+def resume_quality(request: ResumeQualityRequest):
+    analysis = get_analysis(request.analysis_id)
+
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found. Please upload your resume again.",
+        )
+
+    try:
+        result = analyze_resume_quality(analysis["text"])
+        return {
+            "analysis_id": request.analysis_id,
+            "quality_analysis": result.model_dump(),
+        }
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to analyze resume quality right now. Please try again.",
+        )
