@@ -3,26 +3,27 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+import database
 import main
 
 
 client = TestClient(main.app)
 
 
-def test_resume_upload_saves_valid_resume(monkeypatch):
-    saved = {}
+def setup_valid_resume(monkeypatch):
+    resume_text = (
+        "Alex Morgan\n"
+        "Professional Summary\n"
+        "Experienced professional with reporting skills.\n"
+        "Education: Bachelor of Business Administration.\n"
+        "Experience: Finance Assistant, ABC Company, 2023-2025.\n"
+        "Skills: Excel, financial reporting, communication."
+    )
 
     monkeypatch.setattr(
         main,
         "extract_resume_text",
-        lambda filename, file_bytes: (
-            "Alex Morgan\n"
-            "Professional Summary\n"
-            "Experienced finance assistant with reporting skills.\n"
-            "Education: Bachelor of Business Administration.\n"
-            "Experience: Finance Assistant, ABC Company, 2023-2025.\n"
-            "Skills: Excel, financial reporting, communication."
-        ),
+        lambda filename, file_bytes: resume_text,
     )
     monkeypatch.setattr(
         main,
@@ -35,129 +36,46 @@ def test_resume_upload_saves_valid_resume(monkeypatch):
     monkeypatch.setattr(
         main,
         "extract_skills",
-        lambda text: ["Excel"],
-    )
-    monkeypatch.setattr(
-        main,
-        "save_analysis",
-        lambda analysis_id, text, skills: saved.update(
-            {
-                "analysis_id": analysis_id,
-                "text": text,
-                "skills": skills,
-            }
-        ),
+        lambda text: ["Excel", "Financial Reporting"],
     )
 
-    response = client.post(
-        "/resume/upload",
-        files={
-            "file": (
-                "resume.pdf",
-                b"fake PDF bytes",
-                "application/pdf",
-            )
+    return resume_text
+
+
+def setup_job_match(monkeypatch):
+    result = {
+        "required_skills": ["Excel", "Financial Reporting"],
+        "matched_skills": ["Excel"],
+        "missing_skills": ["Financial Reporting"],
+        "match_score": 75,
+        "ai_analysis": {
+            "overall_assessment": "A reasonable match for the position.",
+            "strengths": ["Excel experience"],
+            "weaknesses": ["Limited reporting evidence"],
+            "suggestions": ["Add measurable achievements"],
+            "requirement_assessments": [
+                {
+                    "title": "Excel",
+                    "importance": "required",
+                    "status": "supported",
+                    "evidence": "Excel is listed in the resume.",
+                    "explanation": "The resume supports this requirement.",
+                }
+            ],
         },
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["filename"] == "resume.pdf"
-    assert data["skills"] == ["Excel"]
-    assert data["analysis_id"] == saved["analysis_id"]
-    assert saved["skills"] == ["Excel"]
-
-
-def test_job_match_saves_and_returns_result(monkeypatch):
-    stored = {}
-    ai_result = {
-        "overall_assessment": "Good match for the position.",
-        "strengths": ["Relevant Python experience"],
-        "weaknesses": [],
-        "suggestions": ["Add measurable achievements"],
-        "requirement_assessments": [
-            {
-                "title": "Python",
-                "importance": "required",
-                "status": "supported",
-                "evidence": "Python experience listed.",
-                "explanation": "The resume supports this requirement.",
-            }
-        ],
     }
 
-    match_result = {
-        "required_skills": ["Python"],
-        "matched_skills": ["Python"],
-        "missing_skills": [],
-        "match_score": 100,
-        "ai_analysis": SimpleNamespace(
-            model_dump=lambda: ai_result
-        ),
-    }
-
-    monkeypatch.setattr(
-        main,
-        "get_analysis",
-        lambda analysis_id: {
-            "text": "Resume with Python experience.",
-            "skills": ["Python"],
-        },
-    )
     monkeypatch.setattr(
         main,
         "analyze_job_match",
-        lambda resume_text, skills, job_text: match_result,
+        lambda *args, **kwargs: result,
     )
 
-    def fake_save(analysis_id, job_description, result):
-        stored.update(
-            {
-                "analysis_id": analysis_id,
-                "job_description": job_description,
-                **result,
-            }
-        )
-
-    monkeypatch.setattr(main, "save_match_result", fake_save)
-    monkeypatch.setattr(
-        main,
-        "get_match_result",
-        lambda analysis_id: {
-            **stored,
-            "created_at": "2026-10-10T12:00:00",
-        } if stored else None,
-    )
-
-    response = client.post(
-        "/job/match",
-        json={
-            "analysis_id": "test-resume-id",
-            "text": "We need a Python developer.",
-        },
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["analysis_id"] == "test-resume-id"
-    assert data["match_score"] == 100
-    assert data["matched_skills"] == ["Python"]
-    assert data["ai_analysis"]["requirement_assessments"][0]["status"] == "supported"
-    assert stored["job_description"] == "We need a Python developer."
-
-    saved_response = client.get(
-        "/analysis/test-resume-id/match-result"
-    )
-
-    assert saved_response.status_code == 200
-    saved_data = saved_response.json()
-    assert saved_data["match_score"] == 100
-    assert saved_data["job_description"] == "We need a Python developer."
-    assert saved_data["created_at"] == "2026-10-10T12:00:00"
+    return result
 
 
-def test_quality_analysis_returns_expected_scores(monkeypatch):
-    quality_result = {
+def setup_quality_analysis(monkeypatch):
+    result = {
         "overall_score": 82,
         "summary": "A clear resume with room for improvement.",
         "strengths": ["Relevant experience"],
@@ -180,30 +98,163 @@ def test_quality_analysis_returns_expected_scores(monkeypatch):
 
     monkeypatch.setattr(
         main,
-        "get_analysis",
-        lambda analysis_id: {
-            "text": "Sample resume text.",
-            "skills": ["Python"],
-        },
-    )
-    monkeypatch.setattr(
-        main,
         "analyze_resume_quality",
         lambda text: SimpleNamespace(
-            model_dump=lambda: quality_result
+            model_dump=lambda: result
         ),
     )
 
+    return result
+
+
+def prevent_database_saves(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError(
+            "The stateless analysis endpoint must not save analysis data."
+        )
+
+    monkeypatch.setattr(
+        database,
+        "save_analysis",
+        fail_if_called,
+    )
+    monkeypatch.setattr(
+        database,
+        "save_match_result",
+        fail_if_called,
+    )
+
+
+def test_job_match_returns_result_without_persisting_resume(monkeypatch):
+    setup_valid_resume(monkeypatch)
+    expected = setup_job_match(monkeypatch)
+    prevent_database_saves(monkeypatch)
+
     response = client.post(
+        "/analyze",
+        files={
+            "file": (
+                "resume.pdf",
+                b"Mock PDF content",
+                "application/pdf",
+            )
+        },
+        data={
+            "job_description": "We need an experienced Excel professional."
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["filename"] == "resume.pdf"
+    assert data["skills"] == ["Excel", "Financial Reporting"]
+    assert data["job_match"]["match_score"] == expected["match_score"]
+    assert data["job_match"]["matched_skills"] == ["Excel"]
+    assert data["job_match"]["ai_analysis"]["requirement_assessments"][0][
+        "status"
+    ] == "supported"
+    assert data["quality_analysis"] is None
+    assert "analysis_id" not in data
+
+
+def test_quality_analysis_returns_scores_without_persisting_resume(
+    monkeypatch,
+):
+    setup_valid_resume(monkeypatch)
+    expected = setup_quality_analysis(monkeypatch)
+    prevent_database_saves(monkeypatch)
+
+    response = client.post(
+        "/analyze",
+        files={
+            "file": (
+                "resume.docx",
+                b"Mock DOCX content",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+        data={"include_quality": "true"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["filename"] == "resume.docx"
+    assert data["quality_analysis"]["overall_score"] == expected["overall_score"]
+    assert data["quality_analysis"]["ats_score"] == expected["ats_score"]
+    assert data["quality_analysis"]["strengths"] == expected["strengths"]
+    assert data["quality_analysis"]["section_reviews"][0]["section"] == "Experience"
+    assert data["job_match"] is None
+    assert "analysis_id" not in data
+
+
+def test_combined_analysis_returns_both_results_without_persistence(
+    monkeypatch,
+):
+    setup_valid_resume(monkeypatch)
+    setup_job_match(monkeypatch)
+    setup_quality_analysis(monkeypatch)
+    prevent_database_saves(monkeypatch)
+
+    response = client.post(
+        "/analyze",
+        files={
+            "file": (
+                "resume.pdf",
+                b"Mock PDF content",
+                "application/pdf",
+            )
+        },
+        data={
+            "include_quality": "true",
+            "job_description": "We need an experienced Excel professional.",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["job_match"] is not None
+    assert data["quality_analysis"] is not None
+    assert data["job_match"]["match_score"] == 75
+    assert data["quality_analysis"]["overall_score"] == 82
+    assert "analysis_id" not in data
+
+
+def test_old_database_dependent_endpoints_are_not_available():
+    upload_response = client.post(
+        "/resume/upload",
+        files={
+            "file": (
+                "resume.pdf",
+                b"Mock PDF content",
+                "application/pdf",
+            )
+        },
+    )
+
+    match_response = client.post(
+        "/job/match",
+        json={
+            "analysis_id": "test-resume-id",
+            "text": "We need an Excel professional.",
+        },
+    )
+
+    quality_response = client.post(
         "/resume/quality",
         json={"analysis_id": "test-resume-id"},
     )
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["analysis_id"] == "test-resume-id"
-    assert data["quality_analysis"]["overall_score"] == 82
-    assert data["quality_analysis"]["ats_score"] == 76
-    assert "strengths" in data["quality_analysis"]
-    assert "ats_issues" in data["quality_analysis"]
-    assert "section_reviews" in data["quality_analysis"]
+    saved_result_response = client.get(
+        "/analysis/test-resume-id/match-result"
+    )
+
+    assert upload_response.status_code == 404
+    assert match_response.status_code == 404
+    assert quality_response.status_code == 404
+    assert saved_result_response.status_code == 404

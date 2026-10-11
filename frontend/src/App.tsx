@@ -1,7 +1,7 @@
 
 import { useState } from 'react'
+
 import {
-  uploadResume,
   matchJob,
   analyzeResumeQuality,
 } from './services/api'
@@ -21,7 +21,6 @@ function App() {
     return savedTheme === 'light' ? 'light' : 'dark'
   })
 
-  const [analysisId, setAnalysisId] = useState<string | null>(null)
   const [qualityResult, setQualityResult] =
     useState<ResumeQualityAnalysis | null>(null)
   const [qualityLoading, setQualityLoading] = useState(false)
@@ -38,81 +37,64 @@ function App() {
 
 
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
 
-    if (!resume) {
-      setMessage('Please upload your resume first.')
-      return
-    }
+async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault()
 
-    if (!jobDescription.trim()) {
-      setMessage('Please enter a job description.')
-      return
-    }
-
-    setLoading(true)
-    setMessage('')
-    setResult(null)
-
-    try {
-      let currentAnalysisId = analysisId
-
-      if (!currentAnalysisId) {
-        const uploaded = await uploadResume(resume)
-        currentAnalysisId = uploaded.analysis_id
-        setAnalysisId(currentAnalysisId)
-      }
-
-      const match = await matchJob(currentAnalysisId, jobDescription)
-
-      setResult(match)
-      setMessage('Job matching completed successfully.')
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Unable to analyze your resume. Please try again.',
-      )
-    } finally {
-      setLoading(false)
-    }
+  if (!resume) {
+    setMessage('Please upload your resume first.')
+    return
   }
 
-
-  async function handleQualityAnalysis() {
-    if (!resume) {
-      setMessage('Please upload your resume first.')
-      return
-    }
-
-    setQualityLoading(true)
-    setMessage('')
-    setQualityResult(null)
-
-    try {
-      let currentAnalysisId = analysisId
-
-      if (!currentAnalysisId) {
-        const uploaded = await uploadResume(resume)
-        currentAnalysisId = uploaded.analysis_id
-        setAnalysisId(currentAnalysisId)
-      }
-
-      const response = await analyzeResumeQuality(currentAnalysisId)
-
-      setQualityResult(response.quality_analysis)
-      setMessage('Resume quality and ATS analysis completed.')
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Unable to analyze resume quality. Please try again.',
-      )
-    } finally {
-      setQualityLoading(false)
-    }
+  if (!jobDescription.trim()) {
+    setMessage('Please enter a job description.')
+    return
   }
+
+  setLoading(true)
+  setMessage('')
+
+  try {
+    const match = await matchJob(resume, jobDescription)
+
+    setResult(match)
+    setMessage('Job matching completed successfully.')
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? error.message
+        : 'Unable to analyze your resume. Please try again.',
+    )
+  } finally {
+    setLoading(false)
+  }
+}
+
+async function handleQualityAnalysis() {
+  if (!resume) {
+    setMessage('Please upload your resume first.')
+    return
+  }
+
+  setQualityLoading(true)
+  setMessage('')
+
+  try {
+    const response = await analyzeResumeQuality(resume)
+
+    setQualityResult(response)
+    setMessage('Resume quality and ATS analysis completed.')
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? error.message
+        : 'Unable to analyze resume quality. Please try again.',
+    )
+  } finally {
+    setQualityLoading(false)
+  }
+}
+
 
   return (
     <div className={`app ${theme}`}>
@@ -212,7 +194,6 @@ function App() {
                 accept=".pdf,.docx"
                 onChange={(event) => {
                   setResume(event.target.files?.[0] ?? null)
-                  setAnalysisId(null)
                   setQualityResult(null)
                   setResult(null)
                   setMessage('')

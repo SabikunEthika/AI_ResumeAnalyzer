@@ -1,12 +1,6 @@
 
 const API_BASE_URL = 'http://127.0.0.1:8000'
 
-export interface ResumeUploadResponse {
-  analysis_id: string
-  filename: string
-  skills: string[]
-}
-
 export interface RequirementAssessment {
   title: string
   importance: 'required' | 'preferred'
@@ -24,14 +18,12 @@ export interface AIAnalysis {
 }
 
 export interface JobMatchResponse {
-  analysis_id: string
   required_skills: string[]
   matched_skills: string[]
   missing_skills: string[]
   match_score: number | null
   ai_analysis: AIAnalysis
 }
-
 
 export interface ResumeSectionReview {
   section: string
@@ -54,30 +46,64 @@ export interface ResumeQualityAnalysis {
   ats_improvements: string[]
 }
 
-export interface ResumeQualityResponse {
-  analysis_id: string
-  quality_analysis: ResumeQualityAnalysis
+export interface AnalyzeResponse {
+  filename: string
+  skills: string[]
+  job_match: JobMatchResponse | null
+  quality_analysis: ResumeQualityAnalysis | null
 }
 
 async function getErrorMessage(response: Response): Promise<string> {
   try {
     const data = await response.json()
-    return data.detail ?? 'Something went wrong. Please try again.'
+
+    if (typeof data.detail === 'string') {
+      return data.detail
+    }
+
+    if (Array.isArray(data.detail)) {
+      return data.detail
+        .map((error: { msg?: string }) => error.msg ?? 'Invalid request')
+        .join('. ')
+    }
+
+    return 'Something went wrong. Please try again.'
   } catch {
     return 'Something went wrong. Please try again.'
   }
 }
 
-export async function uploadResume(
+async function analyzeResume(
   file: File,
-): Promise<ResumeUploadResponse> {
+  options: {
+    jobDescription?: string
+    includeQuality?: boolean
+  },
+): Promise<AnalyzeResponse> {
   const formData = new FormData()
-  formData.append('file', file)
 
-  const response = await fetch(`${API_BASE_URL}/resume/upload`, {
-    method: 'POST',
-    body: formData,
-  })
+  formData.append('file', file)
+  formData.append(
+    'include_quality',
+    String(options.includeQuality ?? false),
+  )
+
+  if (options.jobDescription?.trim()) {
+    formData.append('job_description', options.jobDescription.trim())
+  }
+
+  let response: Response
+
+  try {
+    response = await fetch(`${API_BASE_URL}/analyze`, {
+      method: 'POST',
+      body: formData,
+    })
+  } catch {
+    throw new Error(
+      'Cannot connect to ResumeOrbit. Please make sure the backend server is running.',
+    )
+  }
 
   if (!response.ok) {
     throw new Error(await getErrorMessage(response))
@@ -87,44 +113,37 @@ export async function uploadResume(
 }
 
 export async function matchJob(
-  analysisId: string,
+  file: File,
   jobDescription: string,
 ): Promise<JobMatchResponse> {
-  const response = await fetch(`${API_BASE_URL}/job/match`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      analysis_id: analysisId,
-      text: jobDescription,
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await getErrorMessage(response))
+  if (!jobDescription.trim()) {
+    throw new Error('Please enter a job description.')
   }
 
-  return response.json()
+  const data = await analyzeResume(file, {
+    jobDescription,
+    includeQuality: false,
+  })
+
+  if (!data.job_match) {
+    throw new Error('Job matching did not return a result. Please try again.')
+  }
+
+  return data.job_match
 }
 
-
 export async function analyzeResumeQuality(
-  analysisId: string,
-): Promise<ResumeQualityResponse> {
-  const response = await fetch(`${API_BASE_URL}/resume/quality`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      analysis_id: analysisId,
-    }),
+  file: File,
+): Promise<ResumeQualityAnalysis> {
+  const data = await analyzeResume(file, {
+    includeQuality: true,
   })
 
-  if (!response.ok) {
-    throw new Error(await getErrorMessage(response))
+  if (!data.quality_analysis) {
+    throw new Error(
+      'Resume quality analysis did not return a result. Please try again.',
+    )
   }
 
-  return response.json()
+  return data.quality_analysis
 }
