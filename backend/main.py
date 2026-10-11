@@ -176,9 +176,14 @@ async def analyze(
                     skills,
                     job_description,
                 )
-                job_match = JobMatchResult.model_validate(
-                    match_result
-                )
+
+                ai_analysis = match_result["ai_analysis"]
+
+                if hasattr(ai_analysis, "model_dump"):
+                    match_result["ai_analysis"] = ai_analysis.model_dump()
+
+                job_match = JobMatchResult.model_validate(match_result)
+
             except ValueError as error:
                 raise HTTPException(
                     status_code=400,
@@ -195,9 +200,17 @@ async def analyze(
         if include_quality:
             try:
                 quality_result = analyze_resume_quality(resume_text)
-                quality_analysis = ResumeQualityResult.model_validate(
+
+                quality_data = (
                     quality_result.model_dump()
+                    if hasattr(quality_result, "model_dump")
+                    else quality_result
                 )
+
+                quality_analysis = ResumeQualityResult.model_validate(
+                    quality_data
+                )
+
             except Exception:
                 raise HTTPException(
                     status_code=503,
