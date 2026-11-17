@@ -1,21 +1,12 @@
 
-import os
 from typing import Literal
 
-from dotenv import load_dotenv
-from google import genai
 from pydantic import BaseModel, Field
-from google.genai import types
+from services.gemini import generate_structured_content, get_gemini_client
 
 
-load_dotenv()
-
-api_key = os.getenv("GEMINI_API_KEY")
-
-if not api_key:
-    raise ValueError("GEMINI_API_KEY is not set.")
-
-client = genai.Client(api_key=api_key)
+# Retained as an injectable seam for the existing unit tests.
+client = None
 
 
 class RequirementAssessment(BaseModel):
@@ -131,16 +122,9 @@ Keep the analysis balanced, practical, specific, and non-repetitive.
 Use the language and professional context appropriate to the role.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=AIAnalysis
-        )
+    return generate_structured_content(
+        client=client or get_gemini_client(),
+        prompt=prompt,
+        schema=AIAnalysis,
+        operation="job_match",
     )
-
-    if not response.text:
-        raise ValueError("The AI returned an empty analysis.")
-
-    return AIAnalysis.model_validate_json(response.text)

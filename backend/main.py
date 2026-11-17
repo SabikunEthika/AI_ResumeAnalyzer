@@ -10,16 +10,20 @@ from services.skill_analyzer import extract_skills
 from services.analysis_service import analyze_job_match
 from services.resume_validator import validate_resume_document
 from services.resume_quality_analyzer import analyze_resume_quality
+from services.gemini import (
+    GeminiServiceError,
+    get_allowed_origins,
+    get_local_development_origin_regex,
+    is_gemini_configured,
+)
 
 
 app = FastAPI(title="ResumeOrbit API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=get_allowed_origins(),
+    allow_origin_regex=get_local_development_origin_regex(),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
@@ -90,6 +94,40 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/ready")
+def readiness():
+    """Expose configuration readiness without initializing or exposing Gemini."""
+    if not is_gemini_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="AI analysis service is not configured.",
+        )
+    return {"status": "ready"}
+
+
+def gemini_error_response(error: GeminiServiceError) -> HTTPException:
+    """Translate classified provider failures into safe API responses."""
+    if error.category == "rate_limited":
+        return HTTPException(
+            status_code=429,
+            detail="AI analysis is temporarily busy. Please try again shortly.",
+        )
+    if error.category == "timeout":
+        return HTTPException(
+            status_code=504,
+            detail="AI analysis timed out. Please try again.",
+        )
+    if error.category == "invalid_response":
+        return HTTPException(
+            status_code=502,
+            detail="AI analysis returned an invalid response. Please try again.",
+        )
+    return HTTPException(
+        status_code=503,
+        detail="AI analysis is temporarily unavailable. Please try again later.",
+    )
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
     file: UploadFile = File(...),
@@ -146,6 +184,8 @@ async def analyze(
 
         try:
             validation = validate_resume_document(resume_text)
+        except GeminiServiceError as error:
+            raise gemini_error_response(error) from error
         except Exception:
             raise HTTPException(
                 status_code=503,
@@ -189,6 +229,8 @@ async def analyze(
                     status_code=400,
                     detail=str(error),
                 ) from error
+            except GeminiServiceError as error:
+                raise gemini_error_response(error) from error
             except Exception:
                 raise HTTPException(
                     status_code=503,
@@ -211,6 +253,8 @@ async def analyze(
                     quality_data
                 )
 
+            except GeminiServiceError as error:
+                raise gemini_error_response(error) from error
             except Exception:
                 raise HTTPException(
                     status_code=503,
