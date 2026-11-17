@@ -28,6 +28,8 @@ JOB_DESCRIPTION_INDICATORS = [
     "skills",
 ]
 
+MAX_JOB_DESCRIPTION_LENGTH = 10_000
+
 
 def validate_job_description(text):
     text = text.strip()
@@ -35,6 +37,11 @@ def validate_job_description(text):
     if len(text) < 30:
         raise ValueError(
             "Job description must contain at least 30 characters."
+        )
+
+    if len(text) > MAX_JOB_DESCRIPTION_LENGTH:
+        raise ValueError(
+            "Job description must be 10,000 characters or fewer."
         )
 
     normalized_text = text.lower()

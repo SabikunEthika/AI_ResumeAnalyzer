@@ -395,3 +395,23 @@ def test_resume_validation_failure_returns_503(monkeypatch):
 
     assert response.status_code == 503
     assert "Unable to verify this document" in response.json()["detail"]
+
+
+def test_analyze_rate_limit_returns_429(monkeypatch):
+    mock_valid_resume_pipeline(monkeypatch)
+    mock_quality_analysis(monkeypatch)
+    main.analysis_rate_limiter.limit = 1
+
+    response = client.post(
+        "/analyze",
+        files={"file": ("resume.pdf", b"Mock PDF", "application/pdf")},
+        data={"include_quality": "true"},
+    )
+    limited_response = client.post(
+        "/analyze",
+        files={"file": ("resume.pdf", b"Mock PDF", "application/pdf")},
+        data={"include_quality": "true"},
+    )
+
+    assert response.status_code == 200
+    assert limited_response.status_code == 429

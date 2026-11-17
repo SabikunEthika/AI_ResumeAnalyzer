@@ -24,10 +24,6 @@ import type {
 
 
 
-import { downloadAnalysisReport } from './services/pdfReport'
-
-
-
 import './App.css'
 
 
@@ -63,6 +59,7 @@ function App() {
   const [jobDescription, setJobDescription] = useState('')
 
   const [message, setMessage] = useState('')
+  const [hasConsent, setHasConsent] = useState(false)
 
 
 
@@ -90,6 +87,11 @@ function App() {
 
       return
 
+    }
+
+    if (!hasConsent) {
+      setMessage('Please confirm consent before sending your resume for AI analysis.')
+      return
     }
 
 
@@ -152,6 +154,11 @@ function App() {
 
     }
 
+    if (!hasConsent) {
+      setMessage('Please confirm consent before sending your resume for AI analysis.')
+      return
+    }
+
 
 
     setQualityLoading(true)
@@ -194,8 +201,9 @@ function App() {
 
 
 
-  function handleDownloadReport() {
+  async function handleDownloadReport() {
     try {
+      const { downloadAnalysisReport } = await import('./services/pdfReport')
       downloadAnalysisReport({
         filename: resumeFilename || resume?.name || 'resume',
         jobMatch: result,
@@ -209,6 +217,31 @@ function App() {
           : 'Unable to generate the PDF report. Please try again.',
       )
     }
+  }
+
+  function clearAnalysis() {
+    setResume(null)
+    setResumeFilename('')
+    setJobDescription('')
+    setResult(null)
+    setQualityResult(null)
+    setMessage('The selected resume and analysis results have been cleared.')
+  }
+
+  function selectResume(selectedFile: File | null) {
+    if (!selectedFile) return
+
+    const supportedFile = /\.(pdf|docx)$/i.test(selectedFile.name)
+    if (!supportedFile || selectedFile.size > 5 * 1024 * 1024) {
+      setMessage('Choose a PDF or DOCX file no larger than 5 MB.')
+      return
+    }
+
+    setResume(selectedFile)
+    setResumeFilename(selectedFile.name)
+    setQualityResult(null)
+    setResult(null)
+    setMessage('')
   }
 
   return (
@@ -254,6 +287,8 @@ function App() {
           <a href="#analyzer">Analyzer</a>
 
           <a href="#how-it-works">How it works</a>
+
+          <a href="#privacy">Privacy</a>
 
         </nav>
 
@@ -407,17 +442,7 @@ function App() {
 
                 onChange={(event) => {
 
-                  const selectedFile = event.target.files?.[0] ?? null
-
-                  setResume(selectedFile)
-
-                  setResumeFilename(selectedFile?.name ?? '')
-
-                  setQualityResult(null)
-
-                  setResult(null)
-
-                  setMessage('')
+                  selectResume(event.target.files?.[0] ?? null)
 
                 }}
 
@@ -453,6 +478,23 @@ function App() {
 
               <span className="file-types">PDF or DOCX · Maximum 5 MB</span>
 
+            </label>
+
+            {resume && (
+              <button className="clear-button" type="button" onClick={clearAnalysis}>
+                Remove resume & clear results
+              </button>
+            )}
+
+            <label className="consent-control">
+              <input
+                type="checkbox"
+                checked={hasConsent}
+                onChange={(event) => setHasConsent(event.target.checked)}
+              />
+              <span>
+                I consent to send this resume to Google Gemini for AI analysis. ResumeOrbit does not save my resume or results.
+              </span>
             </label>
 
             </section>
@@ -1377,6 +1419,27 @@ function App() {
 
           </div>
 
+        </section>
+
+        <section className="legal-section" id="privacy" aria-labelledby="privacy-heading">
+          <div className="section-heading">
+            <span className="section-kicker">YOUR INFORMATION</span>
+            <h2 id="privacy-heading">Privacy & responsible use</h2>
+          </div>
+          <div className="legal-grid">
+            <article>
+              <h3>Privacy notice</h3>
+              <p>ResumeOrbit does not provide accounts or database storage. Your resume and job description are sent to Google Gemini only to complete the requested analysis. Do not upload information you are not authorised to share.</p>
+            </article>
+            <article>
+              <h3>AI & ATS disclaimer</h3>
+              <p>Results are AI-generated guidance, not verified facts, hiring advice, or a guarantee of ATS acceptance. Review every suggestion and never add untrue skills or experience to a resume.</p>
+            </article>
+            <article>
+              <h3>Terms of use</h3>
+              <p>Use ResumeOrbit lawfully and only with documents you have permission to analyse. Service availability and third-party AI processing are subject to Google’s applicable terms and policies.</p>
+            </article>
+          </div>
         </section>
 
       </main>

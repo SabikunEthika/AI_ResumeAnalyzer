@@ -55,3 +55,8 @@ def test_validate_valid_job_description():
 def test_validate_short_job_description():
     with pytest.raises(ValueError):
         validate_job_description("hello")
+
+
+def test_validate_excessively_long_job_description():
+    with pytest.raises(ValueError, match="10,000"):
+        validate_job_description("developer " * 1_001)

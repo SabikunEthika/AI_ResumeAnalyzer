@@ -99,7 +99,7 @@ def test_pdf_extraction_is_called(monkeypatch):
 
     result = resume_parser.extract_resume_text(
         "resume.pdf",
-        b"mock PDF bytes",
+        b"%PDF-mock bytes",
     )
 
     assert result == "Extracted resume text"
@@ -124,3 +124,13 @@ def test_corrupted_docx_is_rejected():
             "resume.docx",
             b"This is not a valid DOCX file",
         )
+
+
+def test_pdf_signature_must_match_extension():
+    with pytest.raises(ValueError, match="invalid or corrupted"):
+        resume_parser.extract_resume_text("resume.pdf", b"not a PDF")
+
+
+def test_docx_signature_must_match_extension():
+    with pytest.raises(ValueError, match="invalid or corrupted"):
+        resume_parser.extract_resume_text("resume.docx", b"not a DOCX")

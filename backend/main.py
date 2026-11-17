@@ -1,7 +1,7 @@
 
 from typing import Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ from services.gemini import (
     get_local_development_origin_regex,
     is_gemini_configured,
 )
+from services.rate_limiter import FixedWindowRateLimiter
 
 
 app = FastAPI(title="ResumeOrbit API")
@@ -30,6 +31,8 @@ app.add_middleware(
 )
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
+MAX_RESUME_TEXT_LENGTH = 60_000
+analysis_rate_limiter = FixedWindowRateLimiter(limit=5, window_seconds=60)
 
 
 class RequirementAssessmentResponse(BaseModel):
@@ -130,10 +133,17 @@ def gemini_error_response(error: GeminiServiceError) -> HTTPException:
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
+    request: Request,
     file: UploadFile = File(...),
     include_quality: bool = Form(False),
     job_description: str | None = Form(None),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    if not analysis_rate_limiter.allow(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many analysis requests. Please wait a minute and try again.",
+        )
     if not file.filename:
         raise HTTPException(
             status_code=400,
@@ -181,6 +191,15 @@ async def analyze(
                     "a valid PDF or DOCX."
                 ),
             ) from None
+
+        if len(resume_text) > MAX_RESUME_TEXT_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The resume contains too much text to analyze. "
+                    "Please upload a shorter document."
+                ),
+            )
 
         try:
             validation = validate_resume_document(resume_text)
