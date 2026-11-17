@@ -80,6 +80,18 @@ def test_development_cors_allows_vites_alternate_local_port():
     assert response.headers["access-control-allow-origin"] == "http://localhost:5174"
 
 
+def test_configured_cors_origin_normalizes_slashes_and_quotes(monkeypatch):
+    monkeypatch.setenv(
+        "CORS_ALLOWED_ORIGINS",
+        ' "https://frontend-delta-one-f7arl0zj17.vercel.app/", '
+        "https://frontend-delta-one-f7arl0zj17.vercel.app",
+    )
+
+    assert gemini.get_allowed_origins() == [
+        "https://frontend-delta-one-f7arl0zj17.vercel.app"
+    ]
+
+
 def test_gemini_client_retries_transient_provider_errors(monkeypatch):
     captured_options = {}
 
