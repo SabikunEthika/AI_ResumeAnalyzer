@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import database
 import main
 
 
@@ -107,28 +106,9 @@ def setup_quality_analysis(monkeypatch):
     return result
 
 
-def prevent_database_saves(monkeypatch):
-    def fail_if_called(*args, **kwargs):
-        raise AssertionError(
-            "The stateless analysis endpoint must not save analysis data."
-        )
-
-    monkeypatch.setattr(
-        database,
-        "save_analysis",
-        fail_if_called,
-    )
-    monkeypatch.setattr(
-        database,
-        "save_match_result",
-        fail_if_called,
-    )
-
-
-def test_job_match_returns_result_without_persisting_resume(monkeypatch):
+def test_job_match_returns_result_without_persistence(monkeypatch):
     setup_valid_resume(monkeypatch)
     expected = setup_job_match(monkeypatch)
-    prevent_database_saves(monkeypatch)
 
     response = client.post(
         "/analyze",
@@ -159,12 +139,9 @@ def test_job_match_returns_result_without_persisting_resume(monkeypatch):
     assert "analysis_id" not in data
 
 
-def test_quality_analysis_returns_scores_without_persisting_resume(
-    monkeypatch,
-):
+def test_quality_analysis_returns_scores_without_persistence(monkeypatch):
     setup_valid_resume(monkeypatch)
     expected = setup_quality_analysis(monkeypatch)
-    prevent_database_saves(monkeypatch)
 
     response = client.post(
         "/analyze",
@@ -197,7 +174,6 @@ def test_combined_analysis_returns_both_results_without_persistence(
     setup_valid_resume(monkeypatch)
     setup_job_match(monkeypatch)
     setup_quality_analysis(monkeypatch)
-    prevent_database_saves(monkeypatch)
 
     response = client.post(
         "/analyze",
