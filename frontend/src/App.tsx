@@ -377,13 +377,15 @@ function App() {
 
           <form className="analyzer-card" onSubmit={handleSubmit}>
 
+            <section className="upload-panel" aria-labelledby="upload-resume-heading">
+
             <div className="card-heading">
 
               <div>
 
                 <span className="step-label">STEP 01</span>
 
-                <h3>Upload your resume</h3>
+                <h3 id="upload-resume-heading">Upload your resume</h3>
 
                 <p>Give us a snapshot of your experience.</p>
 
@@ -453,9 +455,31 @@ function App() {
 
             </label>
 
+            </section>
 
 
 
+
+
+            <div className="analysis-grid">
+
+              <section className="analysis-column" aria-labelledby="quality-analysis-heading">
+
+                <div className="card-heading analysis-heading">
+
+                  <div>
+
+                    <span className="step-label">RESUME HEALTH CHECK</span>
+
+                    <h3 id="quality-analysis-heading">Check quality & ATS</h3>
+
+                    <p>Review your resume’s clarity, structure, and ATS-readiness.</p>
+
+                  </div>
+
+                  <span className="step-number">02</span>
+
+                </div>
 
             <button
 
@@ -475,6 +499,8 @@ function App() {
 
             </button>
 
+              </section>
+
 
 
             <div className="form-divider">
@@ -489,19 +515,21 @@ function App() {
 
 
 
+              <section className="analysis-column" aria-labelledby="job-analysis-heading">
+
             <div className="card-heading job-heading">
 
               <div>
 
-                <span className="step-label">STEP 02</span>
+                <span className="step-label">STEP 03</span>
 
-                <h3>Set your destination</h3>
+                <h3 id="job-analysis-heading">Check job alignment</h3>
 
                 <p>Paste the job description you want to target.</p>
 
               </div>
 
-              <span className="step-number">02</span>
+              <span className="step-number">03</span>
 
             </div>
 
@@ -561,6 +589,10 @@ function App() {
 
             </div>
 
+              </section>
+
+            </div>
+
 
 
             {message && (
@@ -573,15 +605,41 @@ function App() {
 
             )}
 
+            {(result || qualityResult) && (
+
+              <div className="report-download-footer">
+
+                <button
+
+                  className="analyze-button"
+
+                  type="button"
+
+                  onClick={handleDownloadReport}
+
+                >
+
+                  Download PDF report
+
+                  <span>↓</span>
+
+                </button>
+
+              </div>
+
+            )}
 
 
 
 
 
+
+
+            <div className="analysis-results-grid">
 
             {result && (
 
-              <section className="results-panel" aria-live="polite">
+              <section className="results-panel job-results" aria-live="polite">
 
                 <div className="results-heading">
 
@@ -1255,31 +1313,7 @@ function App() {
 
 
 
-            {(result || qualityResult) && (
-
-              <div className="form-footer report-download-footer">
-
-                <button
-
-                  className="analyze-button"
-
-                  type="button"
-
-                  onClick={handleDownloadReport}
-
-                >
-
-                  Download PDF report
-
-                  <span>↓</span>
-
-                </button>
-
-              </div>
-
-            )}
-
-
+            </div>
 
           </form>
 

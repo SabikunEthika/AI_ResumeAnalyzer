@@ -13,7 +13,7 @@
 
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(91, 80, 177, 0.14), transparent 44%),
     var(--bg);
@@ -342,9 +342,15 @@
   font-size: 28px;
 }
 
-.analyzer-section,
+.analyzer-section {
+  width: min(1120px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 45px 0 90px;
+  scroll-margin-top: 25px;
+}
+
 .how-section {
-  width: min(760px, calc(100% - 40px));
+  width: min(1000px, calc(100% - 40px));
   margin: 0 auto;
   padding: 45px 0 90px;
   scroll-margin-top: 25px;
@@ -375,13 +381,19 @@
 }
 
 .analyzer-card {
-  padding: 34px;
+  min-width: 0;
+  animation: fade-up 650ms ease both;
+}
+
+.upload-panel,
+.analysis-column {
+  min-width: 0;
+  padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: var(--shadow);
   transition: background 300ms ease, border-color 300ms ease;
-  animation: fade-up 650ms ease both;
 }
 
 .card-heading {
@@ -495,6 +507,54 @@
   margin: 28px 0;
 }
 
+.analysis-grid,
+.analysis-results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.analysis-grid {
+  margin-top: 24px;
+}
+
+.analysis-grid > .form-divider {
+  display: none;
+}
+
+.analysis-column {
+  padding: 24px;
+}
+
+.analysis-heading,
+.analysis-column .job-heading {
+  margin-bottom: 22px;
+}
+
+.analysis-column .form-footer {
+  align-items: flex-start;
+}
+
+.analysis-results-grid {
+  margin-top: 24px;
+  grid-template-areas: 'quality job';
+}
+
+.analysis-results-grid .results-panel {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+.analysis-results-grid .job-results {
+  grid-area: job;
+}
+
+.analysis-results-grid .quality-results {
+  grid-area: quality;
+}
+
 .form-divider > span:first-child,
 .form-divider > span:last-child {
   height: 1px;
@@ -521,6 +581,8 @@
 }
 
 .analyzer-card textarea {
+  min-width: 0;
+  max-width: 100%;
   display: block;
   width: 100%;
   min-height: 160px;
@@ -600,6 +662,12 @@
   color: var(--text);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.report-download-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
 }
 
 .how-section {
@@ -709,7 +777,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .navbar {
     width: calc(100% - 36px);
     min-height: 74px;
@@ -757,6 +825,31 @@
 
   .analyzer-card {
     padding: 22px;
+  }
+
+  .analyzer-section {
+    width: min(760px, calc(100% - 36px));
+  }
+
+  .upload-panel,
+  .analysis-column {
+    padding: 22px;
+  }
+
+  .analysis-grid,
+  .analysis-results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-results-grid {
+    grid-template-areas:
+      'quality'
+      'job';
+  }
+
+  .analysis-results-grid .job-results,
+  .analysis-results-grid .quality-results {
+    grid-column: auto;
   }
 
   .feature-grid {
@@ -809,6 +902,14 @@
     border-radius: 18px;
   }
 
+  .upload-panel,
+  .analysis-column,
+  .score-card,
+  .result-card {
+    padding: 17px;
+    border-radius: 14px;
+  }
+
   .step-number {
     font-size: 30px;
   }
@@ -848,6 +949,7 @@
 
 .results-panel {
   display: grid;
+  min-width: 0;
   gap: 18px;
   margin-top: 30px;
   animation: fade-up 500ms ease both;
@@ -870,10 +972,14 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 
 .score-card,
 .result-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 22px;
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -944,6 +1050,21 @@
   line-height: 1.8;
 }
 
+.result-card li,
+.result-card h4,
+.requirement-item h5,
+.requirement-status,
+.requirement-importance {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.results-panel :is(p, li, h3, h4, h5, span, strong) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
 .ai-feedback {
   background: var(--surface-raised);
 }
@@ -1003,6 +1124,10 @@
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 12px;
+}
+
+.requirement-item-heading > * {
+  min-width: 0;
 }
 
 .requirement-item-heading h5 {

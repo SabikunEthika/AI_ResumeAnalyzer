@@ -18,6 +18,8 @@ from pydantic import BaseModel, ValidationError
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_FALLBACK_MODEL = "gemini-3.5-flash"
+DEFAULT_SECOND_FALLBACK_MODEL = "gemini-3.8-flash"
 DEFAULT_TIMEOUT_MS = 30_000
 RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -42,6 +44,8 @@ class GeminiServiceError(RuntimeError):
 class GeminiSettings:
     api_key: str | None
     model: str
+    fallback_model: str | None
+    second_fallback_model: str | None
     timeout_ms: int
 
 
@@ -85,6 +89,12 @@ def get_gemini_settings() -> GeminiSettings:
     return GeminiSettings(
         api_key=os.getenv("GEMINI_API_KEY") or None,
         model=os.getenv("GEMINI_MODEL", DEFAULT_MODEL),
+        fallback_model=os.getenv("GEMINI_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL)
+        or None,
+        second_fallback_model=os.getenv(
+            "GEMINI_SECOND_FALLBACK_MODEL", DEFAULT_SECOND_FALLBACK_MODEL
+        )
+        or None,
         timeout_ms=max(1_000, timeout_ms),
     )
 
@@ -141,25 +151,54 @@ def generate_structured_content(
     """Call Gemini without logging sensitive prompt or response content."""
     settings = get_gemini_settings()
 
-    try:
-        response = client.models.generate_content(
-            model=settings.model,
+    def request(model: str):
+        return client.models.generate_content(
+            model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=schema,
             ),
         )
-    except Exception as error:
-        category, status_code = _classify_error(error)
-        logger.warning(
-            "Gemini request failed operation=%s category=%s status_code=%s exception=%s",
-            operation,
-            category,
-            status_code,
-            type(error).__name__,
+
+    models = tuple(
+        dict.fromkeys(
+            model
+            for model in (
+                settings.model,
+                settings.fallback_model,
+                settings.second_fallback_model,
+            )
+            if model
         )
-        raise GeminiServiceError(operation, category, status_code) from error
+    )
+
+    for index, model in enumerate(models):
+        try:
+            response = request(model)
+            break
+        except Exception as error:
+            category, status_code = _classify_error(error)
+            has_next_model = index < len(models) - 1
+
+            if category == "unavailable" and has_next_model:
+                logger.warning(
+                    "Gemini model unavailable operation=%s status_code=%s; trying next fallback",
+                    operation,
+                    status_code,
+                )
+                continue
+
+            logger.warning(
+                "Gemini request failed operation=%s category=%s status_code=%s exception=%s",
+                operation,
+                category,
+                status_code,
+                type(error).__name__,
+            )
+            raise GeminiServiceError(operation, category, status_code) from error
+    else:  # pragma: no cover - defensive; settings always includes a primary model.
+        raise GeminiServiceError(operation, "not_configured")
 
     if not response.text:
         logger.warning("Gemini returned an empty response operation=%s", operation)

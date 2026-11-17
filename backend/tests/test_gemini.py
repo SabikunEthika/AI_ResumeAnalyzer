@@ -21,6 +21,10 @@ class FakeClient:
         self.models = FakeModels(result)
 
 
+class ProviderError(Exception):
+    code = 503
+
+
 client = TestClient(main.app)
 
 
@@ -86,7 +90,9 @@ def test_gemini_client_retries_transient_provider_errors(monkeypatch):
     monkeypatch.setattr(
         gemini,
         "get_gemini_settings",
-        lambda: gemini.GeminiSettings("test-key", "test-model", 30_000),
+        lambda: gemini.GeminiSettings(
+            "test-key", "test-model", None, None, 30_000
+        ),
     )
     monkeypatch.setattr(gemini.genai, "Client", CapturingClient)
     gemini.get_gemini_client.cache_clear()
@@ -97,3 +103,73 @@ def test_gemini_client_retries_transient_provider_errors(monkeypatch):
     assert retry_options.attempts == 3
     assert retry_options.http_status_codes == [408, 429, 500, 502, 503, 504]
     gemini.get_gemini_client.cache_clear()
+
+
+def test_uses_fallback_model_after_primary_503(monkeypatch):
+    calls = []
+
+    class FallbackModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs["model"])
+            if len(calls) == 1:
+                raise ProviderError()
+            return SimpleNamespace(
+                text='{"is_resume": true, "reason": "Resume content found."}'
+            )
+
+    monkeypatch.setattr(
+        gemini,
+        "get_gemini_settings",
+        lambda: gemini.GeminiSettings(
+            "test-key", "primary-model", "fallback-model", None, 30_000
+        ),
+    )
+
+    result = gemini.generate_structured_content(
+        client=SimpleNamespace(models=FallbackModels()),
+        prompt="Resume text",
+        schema=resume_validator.ResumeValidation,
+        operation="resume_validation",
+    )
+
+    assert result.is_resume is True
+    assert calls == ["primary-model", "fallback-model"]
+
+
+def test_uses_second_fallback_after_two_provider_503s(monkeypatch):
+    calls = []
+
+    class FallbackModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs["model"])
+            if len(calls) < 3:
+                raise ProviderError()
+            return SimpleNamespace(
+                text='{"is_resume": true, "reason": "Resume content found."}'
+            )
+
+    monkeypatch.setattr(
+        gemini,
+        "get_gemini_settings",
+        lambda: gemini.GeminiSettings(
+            "test-key",
+            "primary-model",
+            "fallback-model",
+            "second-fallback-model",
+            30_000,
+        ),
+    )
+
+    result = gemini.generate_structured_content(
+        client=SimpleNamespace(models=FallbackModels()),
+        prompt="Resume text",
+        schema=resume_validator.ResumeValidation,
+        operation="resume_validation",
+    )
+
+    assert result.is_resume is True
+    assert calls == [
+        "primary-model",
+        "fallback-model",
+        "second-fallback-model",
+    ]
