@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import TypeVar
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -52,11 +53,11 @@ class GeminiSettings:
 def get_allowed_origins() -> list[str]:
     """Read explicitly configured browser origins for CORS."""
     configured_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
-    origins = [
-        origin.strip()
-        for origin in configured_origins.split(",")
-        if origin.strip()
-    ]
+    origins = []
+    for configured_origin in configured_origins.split(","):
+        origin = _normalize_origin(configured_origin)
+        if origin and origin not in origins:
+            origins.append(origin)
 
     if origins:
         return origins
@@ -65,6 +66,21 @@ def get_allowed_origins() -> list[str]:
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+
+
+def _normalize_origin(value: str) -> str | None:
+    """Normalize a configured origin without accepting paths or wildcards."""
+    origin = value.strip().strip('"\'')
+    if not origin:
+        return None
+
+    parsed = urlsplit(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        return None
+
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
 def get_local_development_origin_regex() -> str | None:
